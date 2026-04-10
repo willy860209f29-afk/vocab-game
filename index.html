@@ -159,6 +159,54 @@ const loadPlayerHistory = async () => {
         return null;
     }
 };
+        const loadWordErrors = async () => {
+    try {
+        const local_player_key = getLocalPlayerKey();
+
+        const { data: player, error: playerError } = await supabaseClient
+            .from("players")
+            .select("id")
+            .eq("local_player_key", local_player_key)
+            .maybeSingle();
+
+        if (playerError) {
+            console.error("讀取玩家失敗", playerError);
+            return [];
+        }
+
+        if (!player) return [];
+
+        const { data: answers, error: answersError } = await supabaseClient
+            .from("answers")
+            .select("word, level, correct_answer")
+            .eq("player_id", player.id)
+            .eq("is_correct", false);
+
+        if (answersError) {
+            console.error("讀取錯題失敗", answersError);
+            return [];
+        }
+
+        const errorMap = {};
+
+        (answers || []).forEach((a) => {
+            if (!errorMap[a.word]) {
+                errorMap[a.word] = {
+                    word: a.word,
+                    level: a.level,
+                    translation: a.correct_answer,
+                    errorCount: 0
+                };
+            }
+            errorMap[a.word].errorCount += 1;
+        });
+
+        return Object.values(errorMap).sort((a, b) => b.errorCount - a.errorCount);
+    } catch (err) {
+        console.error("載入常錯單字失敗", err);
+        return [];
+    }
+};
         const Icons = {
             Clock: (p) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...p}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
             Play: (p) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" {...p}><polygon points="5 3 19 12 5 21 5 3"/></svg>,
@@ -6183,6 +6231,11 @@ zoom	v./n.	6	快速移動；放大/縮小(鏡頭)；激增`;
         const stats = await loadLevelStats();
         if (stats) {
             setLevelStats(stats);
+        }
+
+        const errors = await loadWordErrors();
+        if (errors.length > 0) {
+            setWordErrors(errors);
         }
     };
 
