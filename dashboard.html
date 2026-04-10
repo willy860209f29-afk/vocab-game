@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>單字遊戲 Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen">
+    <div class="max-w-7xl mx-auto px-6 py-8">
+        <div class="flex items-center justify-between mb-8">
+            <div>
+                <h1 class="text-3xl font-bold">單字遊戲 Dashboard</h1>
+                <p class="text-slate-500 mt-2">管理你的玩家與遊玩數據</p>
+            </div>
+            <a href="./" class="px-4 py-2 rounded-xl bg-white border shadow-sm hover:bg-slate-100">
+                回到遊戲首頁
+            </a>
+        </div>
+
+        <div id="loading" class="text-slate-500 mb-6">資料讀取中...</div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
+            <div class="bg-white rounded-2xl shadow-sm border p-5">
+                <div class="text-slate-500 text-sm mb-2">總玩家數</div>
+                <div id="totalPlayers" class="text-3xl font-bold">-</div>
+            </div>
+            <div class="bg-white rounded-2xl shadow-sm border p-5">
+                <div class="text-slate-500 text-sm mb-2">總遊玩局數</div>
+                <div id="totalSessions" class="text-3xl font-bold">-</div>
+            </div>
+            <div class="bg-white rounded-2xl shadow-sm border p-5">
+                <div class="text-slate-500 text-sm mb-2">平均分數</div>
+                <div id="avgScore" class="text-3xl font-bold">-</div>
+            </div>
+            <div class="bg-white rounded-2xl shadow-sm border p-5">
+                <div class="text-slate-500 text-sm mb-2">平均遊玩秒數</div>
+                <div id="avgDuration" class="text-3xl font-bold">-</div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            <div class="bg-white rounded-2xl shadow-sm border p-5">
+                <h2 class="text-xl font-semibold mb-4">最近 20 筆遊玩紀錄</h2>
+                <div class="overflow-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="text-left border-b">
+                                <th class="py-3 pr-3">時間</th>
+                                <th class="py-3 pr-3">分數</th>
+                                <th class="py-3 pr-3">秒數</th>
+                                <th class="py-3 pr-3">題數</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sessionsTable"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-2xl shadow-sm border p-5">
+                <h2 class="text-xl font-semibold mb-4">最常答錯單字前 10 名</h2>
+                <div class="overflow-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="text-left border-b">
+                                <th class="py-3 pr-3">單字</th>
+                                <th class="py-3 pr-3">等級</th>
+                                <th class="py-3 pr-3">錯誤次數</th>
+                            </tr>
+                        </thead>
+                        <tbody id="wrongWordsTable"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-6 bg-white rounded-2xl shadow-sm border p-5">
+            <h2 class="text-xl font-semibold mb-4">各 Level 平均正確率</h2>
+            <div id="levelStats" class="space-y-4"></div>
+        </div>
+
+        <div id="errorBox" class="hidden mt-6 p-4 rounded-xl bg-red-50 border border-red-200 text-red-700"></div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = "https://tmgybnjmxbylxaarydoc.supabase.co";
+        const SUPABASE_KEY = "sb_publishable_HaTJJ_EklosiR1vq1ht12Q_o2BYCGbE";
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        const loadingEl = document.getElementById("loading");
+        const errorBox = document.getElementById("errorBox");
+
+        function showError(message) {
+            errorBox.textContent = message;
+            errorBox.classList.remove("hidden");
+        }
+
+        function fmtDate(isoString) {
+            if (!isoString) return "-";
+            const d = new Date(isoString);
+            return d.toLocaleString("zh-TW");
+        }
+
+        function setText(id, value) {
+            document.getElementById(id).textContent = value;
+        }
+
+        async function loadDashboard() {
+            try {
+                loadingEl.textContent = "資料讀取中...";
+
+                const [
+                    playersResult,
+                    sessionsResult,
+                    answersResult
+                ] = await Promise.all([
+                    supabaseClient.from("players").select("id", { count: "exact" }),
+                    supabaseClient.from("game_sessions").select("*", { count: "exact" }).order("played_at", { ascending: false }),
+                    supabaseClient.from("answers").select("word, level, is_correct")
+                ]);
+
+                if (playersResult.error) throw playersResult.error;
+                if (sessionsResult.error) throw sessionsResult.error;
+                if (answersResult.error) throw answersResult.error;
+
+                const players = playersResult.data || [];
+                const sessions = sessionsResult.data || [];
+                const answers = answersResult.data || [];
+
+                const totalPlayers = playersResult.count ?? players.length;
+                const totalSessions = sessionsResult.count ?? sessions.length;
+
+                const avgScore = sessions.length
+                    ? (sessions.reduce((sum, s) => sum + (s.score || 0), 0) / sessions.length).toFixed(1)
+                    : "0";
+
+                const avgDuration = sessions.length
+                    ? (sessions.reduce((sum, s) => sum + (s.duration_seconds || 0), 0) / sessions.length).toFixed(1)
+                    : "0";
+
+                setText("totalPlayers", totalPlayers);
+                setText("totalSessions", totalSessions);
+                setText("avgScore", avgScore);
+                setText("avgDuration", avgDuration);
+
+                const sessionsTable = document.getElementById("sessionsTable");
+                sessionsTable.innerHTML = "";
+
+                sessions.slice(0, 20).forEach((s) => {
+                    const tr = document.createElement("tr");
+                    tr.className = "border-b last:border-b-0";
+                    tr.innerHTML = `
+                        <td class="py-3 pr-3">${fmtDate(s.played_at)}</td>
+                        <td class="py-3 pr-3">${s.score ?? "-"}</td>
+                        <td class="py-3 pr-3">${s.duration_seconds ?? "-"}</td>
+                        <td class="py-3 pr-3">${s.total_questions ?? "-"}</td>
+                    `;
+                    sessionsTable.appendChild(tr);
+                });
+
+                const wrongMap = {};
+                answers.forEach((a) => {
+                    if (a.is_correct === false) {
+                        if (!wrongMap[a.word]) {
+                            wrongMap[a.word] = {
+                                word: a.word,
+                                level: a.level,
+                                wrongCount: 0
+                            };
+                        }
+                        wrongMap[a.word].wrongCount += 1;
+                    }
+                });
+
+                const wrongWords = Object.values(wrongMap)
+                    .sort((a, b) => b.wrongCount - a.wrongCount)
+                    .slice(0, 10);
+
+                const wrongWordsTable = document.getElementById("wrongWordsTable");
+                wrongWordsTable.innerHTML = "";
+
+                wrongWords.forEach((item) => {
+                    const tr = document.createElement("tr");
+                    tr.className = "border-b last:border-b-0";
+                    tr.innerHTML = `
+                        <td class="py-3 pr-3">${item.word}</td>
+                        <td class="py-3 pr-3">L${item.level}</td>
+                        <td class="py-3 pr-3">${item.wrongCount}</td>
+                    `;
+                    wrongWordsTable.appendChild(tr);
+                });
+
+                const levelMap = {
+                    1: { correct: 0, total: 0 },
+                    2: { correct: 0, total: 0 },
+                    3: { correct: 0, total: 0 },
+                    4: { correct: 0, total: 0 },
+                    5: { correct: 0, total: 0 },
+                    6: { correct: 0, total: 0 }
+                };
+
+                answers.forEach((a) => {
+                    const lv = Number(a.level);
+                    if (!levelMap[lv]) levelMap[lv] = { correct: 0, total: 0 };
+                    levelMap[lv].total += 1;
+                    if (a.is_correct) levelMap[lv].correct += 1;
+                });
+
+                const levelStatsEl = document.getElementById("levelStats");
+                levelStatsEl.innerHTML = "";
+
+                [1, 2, 3, 4, 5, 6].forEach((lv) => {
+                    const total = levelMap[lv].total;
+                    const correct = levelMap[lv].correct;
+                    const percent = total ? Math.round((correct / total) * 100) : 0;
+
+                    const wrapper = document.createElement("div");
+                    wrapper.innerHTML = `
+                        <div class="flex justify-between text-sm mb-1">
+                            <span>LV.${lv}</span>
+                            <span>${percent}% (${correct}/${total})</span>
+                        </div>
+                        <div class="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
+                            <div class="h-full bg-indigo-500 rounded-full" style="width:${percent}%"></div>
+                        </div>
+                    `;
+                    levelStatsEl.appendChild(wrapper);
+                });
+
+                loadingEl.textContent = "資料已更新";
+            } catch (err) {
+                console.error(err);
+                loadingEl.textContent = "資料讀取失敗";
+                showError("讀取 dashboard 失敗，請確認 Supabase key 正確、資料表存在，且網站已部署到最新版本。");
+            }
+        }
+
+        loadDashboard();
+    </script>
+</body>
+</html>
