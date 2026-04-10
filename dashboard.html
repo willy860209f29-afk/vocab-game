@@ -159,12 +159,17 @@
                 sessions.slice(0, 20).forEach((s) => {
                     const tr = document.createElement("tr");
                     tr.className = "border-b last:border-b-0";
-                    tr.innerHTML = `
-                        <td class="py-3 pr-3">${fmtDate(s.played_at)}</td>
-                        <td class="py-3 pr-3">${s.score ?? "-"}</td>
-                        <td class="py-3 pr-3">${s.duration_seconds ?? "-"}</td>
-                        <td class="py-3 pr-3">${s.total_questions ?? "-"}</td>
-                    `;
+                   tr.innerHTML = `
+    <td class="py-3 pr-3">
+        <span class="inline-flex items-center px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-medium">
+            ${shortPlayerId(s.player_id)}
+        </span>
+    </td>
+    <td class="py-3 pr-3">${fmtDate(s.played_at)}</td>
+    <td class="py-3 pr-3">${s.score ?? "-"}</td>
+    <td class="py-3 pr-3">${s.duration_seconds ?? "-"}</td>
+    <td class="py-3 pr-3">${s.total_questions ?? "-"}</td>
+`;
                     sessionsTable.appendChild(tr);
                 });
 
@@ -193,15 +198,9 @@
                     const tr = document.createElement("tr");
                     tr.className = "border-b last:border-b-0";
                     tr.innerHTML = `
-    <td class="py-3 pr-3">
-        <span class="inline-flex items-center px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-medium">
-            ${shortPlayerId(s.player_id)}
-        </span>
-    </td>
-    <td class="py-3 pr-3">${fmtDate(s.played_at)}</td>
-    <td class="py-3 pr-3">${s.score ?? "-"}</td>
-    <td class="py-3 pr-3">${s.duration_seconds ?? "-"}</td>
-    <td class="py-3 pr-3">${s.total_questions ?? "-"}</td>
+    <td class="py-3 pr-3">${item.word}</td>
+    <td class="py-3 pr-3">L${item.level}</td>
+    <td class="py-3 pr-3">${item.wrongCount}</td>
 `;
                     wrongWordsTable.appendChild(tr);
                 });
