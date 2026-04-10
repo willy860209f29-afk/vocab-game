@@ -8,6 +8,7 @@
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400&display=swap');
         body { font-family: 'Noto Sans TC', sans-serif; font-weight: 400; }
@@ -25,7 +26,43 @@
 
     <script type="text/babel">
         const { useState, useEffect, useMemo } = React;
+const SUPABASE_URL = "https://tmgybnjmxbylxaarydoc.supabase.co";
+const SUPABASE_KEY = "sb_publishable_HaTJJ_EklosiR1vq1ht12Q_o2BYCGbE";
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+const getLocalPlayerKey = () => {
+    let key = localStorage.getItem("local_player_key");
+    if (!key) {
+        key = crypto.randomUUID();
+        localStorage.setItem("local_player_key", key);
+    }
+    return key;
+};
+
+const getOrCreatePlayer = async () => {
+    const local_player_key = getLocalPlayerKey();
+
+    const { data: existingPlayer } = await supabaseClient
+        .from("players")
+        .select("id")
+        .eq("local_player_key", local_player_key)
+        .maybeSingle();
+
+    if (existingPlayer) return existingPlayer.id;
+
+    const { data: newPlayer, error } = await supabaseClient
+        .from("players")
+        .insert([{ local_player_key }])
+        .select("id")
+        .single();
+
+    if (error) {
+        console.error("建立玩家失敗", error);
+        return null;
+    }
+
+    return newPlayer.id;
+};
         const Icons = {
             Clock: (p) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...p}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
             Play: (p) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" {...p}><polygon points="5 3 19 12 5 21 5 3"/></svg>,
@@ -6175,6 +6212,86 @@ zoom	v./n.	6	快速移動；放大/縮小(鏡頭)；激增`;
                     });
                     return next;
                 });
+
+                (async () => {
+    try {
+        const playerId = await getOrCreatePlayer();
+        if (!playerId) return;
+
+        const totalQuestions = questions.length;
+
+        const levelMap = {
+            1: { correct: 0, total: 0 },
+            2: { correct: 0, total: 0 },
+            3: { correct: 0, total: 0 },
+            4: { correct: 0, total: 0 },
+            5: { correct: 0, total: 0 },
+            6: { correct: 0, total: 0 }
+        };
+
+        questions.forEach((q) => {
+            const lv = Number(q.correctWord.level);
+            if (!levelMap[lv]) levelMap[lv] = { correct: 0, total: 0 };
+            levelMap[lv].total += 1;
+
+            const wasWrong = finalMistakes.some(m => m.word === q.correctWord.word);
+            if (!wasWrong) levelMap[lv].correct += 1;
+        });
+
+        const safeAccuracy = (lv) => {
+            const total = levelMap[lv]?.total || 0;
+            const correct = levelMap[lv]?.correct || 0;
+            if (total === 0) return null;
+            return Math.round((correct / total) * 100);
+        };
+
+        const { data: sessionData, error: sessionError } = await supabaseClient
+            .from("game_sessions")
+            .insert([{
+                player_id: playerId,
+                duration_seconds: Math.round(Number(time)),
+                score: finalScore,
+                total_questions: totalQuestions,
+                level_1_accuracy: safeAccuracy(1),
+                level_2_accuracy: safeAccuracy(2),
+                level_3_accuracy: safeAccuracy(3),
+                level_4_accuracy: safeAccuracy(4),
+                level_5_accuracy: safeAccuracy(5),
+                level_6_accuracy: safeAccuracy(6)
+            }])
+            .select("id")
+            .single();
+
+        if (sessionError) {
+            console.error("寫入 game_sessions 失敗", sessionError);
+            return;
+        }
+
+        const answerRows = questions.map((q) => {
+            const wasWrong = finalMistakes.some(m => m.word === q.correctWord.word);
+            return {
+                session_id: sessionData.id,
+                player_id: playerId,
+                word: q.correctWord.word,
+                level: Number(q.correctWord.level),
+                question_type: q.type,
+                is_correct: !wasWrong,
+                selected_answer: null,
+                correct_answer: q.correctWord.translation || q.correctWord.word
+            };
+        });
+
+        const { error: answersError } = await supabaseClient
+            .from("answers")
+            .insert(answerRows);
+
+        if (answersError) {
+            console.error("寫入 answers 失敗", answersError);
+        }
+    } catch (err) {
+        console.error("Supabase 寫入失敗", err);
+    }
+})();
 
                 setAppState('result');
             };
