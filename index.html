@@ -63,6 +63,52 @@ const getOrCreatePlayer = async () => {
 
     return newPlayer.id;
 };
+const loadPlayerHistory = async () => {
+    try {
+        const local_player_key = getLocalPlayerKey();
+
+        const { data: player, error: playerError } = await supabaseClient
+            .from("players")
+            .select("id")
+            .eq("local_player_key", local_player_key)
+            .maybeSingle();
+
+        if (playerError) {
+            console.error("讀取玩家失敗", playerError);
+            return [];
+        }
+
+        if (!player) return [];
+
+        const { error: updateError } = await supabaseClient
+            .from("players")
+            .update({ last_seen_at: new Date().toISOString() })
+            .eq("id", player.id);
+
+        if (updateError) {
+            console.error("更新 last_seen_at 失敗", updateError);
+        }
+
+        const { data: sessions, error: sessionError } = await supabaseClient
+            .from("game_sessions")
+            .select("score, duration_seconds, played_at")
+            .eq("player_id", player.id)
+            .order("played_at", { ascending: true });
+
+        if (sessionError) {
+            console.error("讀取歷史紀錄失敗", sessionError);
+            return [];
+        }
+
+        return (sessions || []).map((s) => ({
+            score: s.score,
+            time: s.duration_seconds
+        }));
+    } catch (err) {
+        console.error("載入歷史資料失敗", err);
+        return [];
+    }
+};
         const Icons = {
             Clock: (p) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...p}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
             Play: (p) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" {...p}><polygon points="5 3 19 12 5 21 5 3"/></svg>,
@@ -6077,7 +6123,16 @@ zoom	v./n.	6	快速移動；放大/縮小(鏡頭)；激增`;
             const [sessionMistakes, setSessionMistakes] = useState([]);
             const [showAnswers, setShowAnswers] = useState(false);
             const [selectedOptionId, setSelectedOptionId] = useState(null);
+            useEffect(() => {
+    const initHistory = async () => {
+        const history = await loadPlayerHistory();
+        if (history.length > 0) {
+            setPlayHistory(history);
+        }
+    };
 
+    initHistory();
+}, []);
             const daysToGSAT = useMemo(() => {
                 const diff = new Date('2028-01-15') - new Date();
                 return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
