@@ -109,6 +109,56 @@ const loadPlayerHistory = async () => {
         return [];
     }
 };
+        const loadLevelStats = async () => {
+    try {
+        const local_player_key = getLocalPlayerKey();
+
+        const { data: player, error: playerError } = await supabaseClient
+            .from("players")
+            .select("id")
+            .eq("local_player_key", local_player_key)
+            .maybeSingle();
+
+        if (playerError) {
+            console.error("讀取玩家失敗", playerError);
+            return null;
+        }
+
+        if (!player) return null;
+
+        const { data: answers, error: answersError } = await supabaseClient
+            .from("answers")
+            .select("level, is_correct")
+            .eq("player_id", player.id);
+
+        if (answersError) {
+            console.error("讀取等級統計失敗", answersError);
+            return null;
+        }
+
+        const stats = {
+            '1': { correct: 0, total: 0 },
+            '2': { correct: 0, total: 0 },
+            '3': { correct: 0, total: 0 },
+            '4': { correct: 0, total: 0 },
+            '5': { correct: 0, total: 0 },
+            '6': { correct: 0, total: 0 }
+        };
+
+        (answers || []).forEach((a) => {
+            const lv = String(a.level);
+            if (!stats[lv]) stats[lv] = { correct: 0, total: 0 };
+
+            stats[lv].total += 1;
+            if (a.is_correct) stats[lv].correct += 1;
+        });
+
+        return stats;
+    } catch (err) {
+        console.error("載入等級統計失敗", err);
+        return null;
+    }
+};
         const Icons = {
             Clock: (p) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...p}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
             Play: (p) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" {...p}><polygon points="5 3 19 12 5 21 5 3"/></svg>,
@@ -6123,11 +6173,16 @@ zoom	v./n.	6	快速移動；放大/縮小(鏡頭)；激增`;
             const [sessionMistakes, setSessionMistakes] = useState([]);
             const [showAnswers, setShowAnswers] = useState(false);
             const [selectedOptionId, setSelectedOptionId] = useState(null);
-            useEffect(() => {
+           useEffect(() => {
     const initHistory = async () => {
         const history = await loadPlayerHistory();
         if (history.length > 0) {
             setPlayHistory(history);
+        }
+
+        const stats = await loadLevelStats();
+        if (stats) {
+            setLevelStats(stats);
         }
     };
 
