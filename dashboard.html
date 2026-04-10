@@ -102,7 +102,12 @@
             const d = new Date(isoString);
             return d.toLocaleString("zh-TW");
         }
-
+        
+        function shortPlayerId(playerId) {
+            if (!playerId) return "-";
+            return "P-" + playerId.replace(/-/g, "").slice(0, 6).toUpperCase();
+        }
+        
         function setText(id, value) {
             document.getElementById(id).textContent = value;
         }
@@ -117,7 +122,10 @@
                     answersResult
                 ] = await Promise.all([
                     supabaseClient.from("players").select("id", { count: "exact" }),
-                    supabaseClient.from("game_sessions").select("*", { count: "exact" }).order("played_at", { ascending: false }),
+                    supabaseClient
+    .from("game_sessions")
+    .select("id, player_id, played_at, score, duration_seconds, total_questions", { count: "exact" })
+    .order("played_at", { ascending: false }),
                     supabaseClient.from("answers").select("word, level, is_correct")
                 ]);
 
@@ -185,10 +193,16 @@
                     const tr = document.createElement("tr");
                     tr.className = "border-b last:border-b-0";
                     tr.innerHTML = `
-                        <td class="py-3 pr-3">${item.word}</td>
-                        <td class="py-3 pr-3">L${item.level}</td>
-                        <td class="py-3 pr-3">${item.wrongCount}</td>
-                    `;
+    <td class="py-3 pr-3">
+        <span class="inline-flex items-center px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-medium">
+            ${shortPlayerId(s.player_id)}
+        </span>
+    </td>
+    <td class="py-3 pr-3">${fmtDate(s.played_at)}</td>
+    <td class="py-3 pr-3">${s.score ?? "-"}</td>
+    <td class="py-3 pr-3">${s.duration_seconds ?? "-"}</td>
+    <td class="py-3 pr-3">${s.total_questions ?? "-"}</td>
+`;
                     wrongWordsTable.appendChild(tr);
                 });
 
